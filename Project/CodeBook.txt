@@ -1,0 +1,48 @@
+Response variable  
+1 - winner (red or blue)
+
+
+Numerical variables  
+1 - no_of_rounds = number of rounds the fight is scheduled for  
+Note: In general, title bouts have 5 rounds while regular ones have 3
+
+2 - B_current_lose_streak  
+3 - B_current_win_streak  
+4 - B_draw  
+5 - B_avg_SIG_STR_landed (significant strikes landed per minute)  
+6 - B_avg_SIG_STR_pct (Significant strike accuracy percent)  
+7 - B_avg_SUB_ATT (submissions attempted per 15 mins)  
+8 - B_avg_TD_landed (takedowns landed per 15 mins)  
+9 - B_avg_TD_pct (takedown accuracy)  
+10 - B_longest_win_streak  
+11 - B_losses  
+12 - B_total_rounds_fought  
+13 - B_win_by_Decision_Majority  
+14 - B_win_by_Decision_Split  
+15 - B_win_by_Decision_Unanimous  
+16 - B_win_by_KO/TKO  
+17 - B_win_by_Submission  
+18 - B_wins  
+20 - B_Height_cms  
+21 - B_Reach_cms  
+22 - B_age
+23 - B_odds (predicted odds of victory by UFC)
+
+24 - finish_round (how many rounds till finish)
+
+
+Categorical Variables  
+1 - gender (MALE or FEMALE)  
+2 - B_Stance (Orthodox, Southpaw, Other)  
+3 - empty_arena (1 = true, 0 = false)  
+4 - better_rank (which fighter is ranked higher: red, blue, or neither)  
+5 - finish (how the fight ended: U-DEC, S-DEC, KO/TKO, etc)  
+
+6 - weight_class (Catch Weight, lightweight, welterweight, middleweight, featherweight, bantamweight, Flyweight, Heavyweight, Light Heavyweight, Women's Featherweight, Women's Bantamweight, Women's Featherweight, Women's Flyweight, Women's Strawweight.)  
+Note: Catch Weight is not an official weight class and is instead a weight that is seperately agreed upon by the fighter's involved. Women's weight classes are seperate than Mens.  
+
+
+Red then has all the same variables as blue but R replaces the B respectively  
+
+Total  
+There is a total of 59 variables with 7 being categorical, 46 numerical, and 23 variables which are repeats (one for blue and one for red). The final response variable is categorical which makes the model a classification model.  

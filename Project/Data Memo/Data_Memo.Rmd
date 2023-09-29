@@ -1,0 +1,35 @@
+---
+title: "131_DataMemo 8/20/23"
+output: html_document
+date: "2023-08-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+- An overview of your dataset
+
+This is a dataset of of UFC fights and their fighters. It includes common statistics such as age, height, weight, and reach for each fighter. As well as statistics more relavent to combat sports such as takedowns attempted/succeeded, loss streak, wins by split/majority/unanimous decision and more. I have obtained this dataset through Kaggle. It has around 5000 observations and 115 columns (not all are relavant predictors).
+
+https://www.kaggle.com/datasets/mdabbert/ultimate-ufc-dataset?select=ufc-master.csv
+
+The majority of the missing data comes from the columns talking about the ranking of the fighter. In some cases the fighter may be unranked, I plan on dealing with this by not including those columns in my analysis since there are other, more fact based, predictors that would be better to use.
+
+
+
+- An overview of your research question(s)
+
+The variable I am most interested in researching is the outcome of the fight, whether blue or red won. I will be using many response variables such as the ones I mentioned above. Since the answer to the question will be either Red or Blue this is a classification approach. I think the most important predictors are the ones that are usually listed on a fighter's fight card (age, W/L ratio, height, weight, reach) however there will be many other ones that are going to be important such as how many strikes a fighter attempts or how many takedowns they attempt as these stats can easily give us a fighter's fighting style and stats like times they going struk or taken down will give us their weaknesses. For example, matching someone who is vulnerable to wrestling and Jiu-jitsu against a pro wrestler/black belt would greatly affect the odds of winning, regardless of age height and other such stats. The goal of my model is not yet determined. I have not decided whether I want to use it to predict future fights or describe statistics from past fights.
+
+
+
+- Your proposed project timeline
+
+Due to my lack of experience with R I can not give an accurate timeline since it will all depend on how fast I am able to answer any blocks that come my way. however, I would like to have the dataset loaded and prepared by the end of week three, the analysis done by the end of week 4, and the presenation completed by the end of week 5.
+
+
+
+- Any questions or concerns
+
+Nope, if I stumble onto any coding roadblocks ewith R I'll be sure to ask.

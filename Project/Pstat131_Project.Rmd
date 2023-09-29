@@ -1,0 +1,518 @@
+---
+title: "Red vs Blue"
+author: "Angel Abdulnour"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+date: "2023-08-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r, include=FALSE}
+#List of libraries/packages used
+library(tidyverse) #Main one
+library(tidymodels) #Main one
+
+library(dplyr) #for more R functionality
+library(caret) #More R functionality
+library(ggplot2) #for plotting
+library(corrplot) #For correlation matrix
+library(kableExtra) #for scrolling feature on tables when knit
+
+library(parsnip)#helps run models
+library(discrim)#helps run models
+
+library(randomForest) #For Random Forest Model
+library(xgboost) #For Boosted Tree Model
+library(keras) #For Neural Network Model
+```
+
+
+# What is UFC (Introduction)
+
+UFC (Ultimate Fighting Championship) is an organization where fighters can compete against each other using MMA (Mixed Martial Arts) techniques for money, fame, glory, and any other reason one might have for stepping into the octagon. Two fighters, one designated red and the other blue, are set up against each other according to their weight class. There are, in general, 3 ways for a fighter to win the bout. K/O (Knockout), submission (opponent taps out), or decision (fighters both last until the end of the bout and winner is based off of the judges scorecards). Within each category are others like TKO, split decision, majority decision, and unanimous decision.  
+
+## About the Model  
+
+This model's goal is to take in variables such as both fighters' height, age, average strikes, average takedowns etc, and try to determine who would be the winner. The reason this model is needed is for the accuracy of sports betting. Before the advent of data science fighting experts were the ones who determined which fighter was better and by how much. The arena then decides the betting odds based off of that. This leads to inaccurate odds and could cost the arena a lot of money over time. Nowadays that job is being left left to data science and is mainly relying on statistics and data. However, there is no perfect and even the multi million dollar organization, UFC, and other betting companies can predict wrong outcomes. This is why we continue to train and build better models, in hopes of gainning even one percent more accuracy which could lead to saving millions of dollars over time.  
+
+## Project Roadmap  
+
+How will we progress throughout this project? The first step when dealing with any dataset is to look over and understand it. We can look over the codebook and understand what each of the columns represent and we can use our personal experience through watching UFC in order to make sense of it. Then we look further in and use data analysis to see some surface level trends as well be able to manipulate the data to our satisfaction. After the data is properly set we can then get to the creation of our recipe which will lead to the training of our models. At the end we will fit and test our best performing model and hopefully make millions betting against the multimillion dollar betting companies.  
+
+
+The data comes from the "ufc-master" data sheet found on Kaggle:
+
+https://www.kaggle.com/datasets/mdabbert/ultimate-ufc-dataset?select=ufc-master.csv
+
+
+# Exploratory Data Analysis  
+In the codebook provided in the .txt file I explained all the variables I will use and are relevant to my models. However, the original dataset found on kaggle includes many excess variable that are useless to the model as well as many variables with a high colinearity.
+
+## Load and Analyze  
+To begin we load in the full dataset so that we can check out what we are working with.  
+
+```{r, echo=FALSE}
+UFC_Original <- read.csv("C:/Users/Angel/OneDrive/Desktop/schoolwork/1. Pstat 131/Project/Data_Folder/ufc-master.csv", header=TRUE, stringsAsFactors=FALSE, sep=',')
+
+UFC_Short <- UFC_Original[1:10,]
+kable(UFC_Short) %>%
+  kable_styling("striped", full_width = F) %>%
+  scroll_box(width = "100%", height = "200px")
+# Submit this only in the final project because it takes too long to load
+
+dim(UFC_Original)
+```
+Right off the bat we see several of the variables that I will not be using such as the names of the fighters. We also notice that there are 4896 observations and  119 total variables. Let's clean this up. We use our personal knowledge and experience of UFC to get rid of many variables such as the names of the fighters, which logically have no impact on who the winner would be.
+
+## Getting our Main Dataset
+
+```{r}
+UFC_Main <- UFC_Original[, c(3, 4, 10, 13:25, 27:31, 33:36, 38:48, 50:54, 56:59, 61, 62, 78, 108, 109, 111, 70:77)]
+View(UFC_Original)
+#include 12 if you want weight class
+```
+Here we created a subset of the original dataset that only includes the variables that we are interested in (which are listed in the codebook). Now that we have "trimmed the fat off" lets get some general information about our dataset and our relevant variables.  
+
+
+## Dataset Analysis and Visual Data
+```{r}
+dim(UFC_Main)
+sum(is.na(UFC_Main)) #less than 3 percent of data is missing
+```
+We can see that our trimmed dataset has a total of 288,864 cells and 6718 of them are null. This is a fairly good number because it means that less than 3 percent of dataset has null values, which is a number we could afford considering the size of our data. Rather than simply removing it, lets analyze this null data and see if we could come to any conclusions based off the lack of data.  
+
+### Null data
+
+```{r, echo=FALSE}
+null_Percentage <- sapply(UFC_Main, function(x) sum(is.na(x))/length(x))*100
+null_Columns <- null_Percentage[null_Percentage > 0]
+
+
+null_df <- as.data.frame(null_Columns)
+
+null_Columns
+
+ggplot(null_df, aes(x = rownames(null_df), y = null_df[,1])) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  xlab("Columns with null values") +
+  ylab("Percent of column that is null")
+
+```
+
+Here we can see which columns have null values. Fortunately, it seems the nulls are gathered into a few specific columns such as B_avg_SIG_STR_landed, B_avg_SIG_STR_pct, and B_avg_TD_landed rather than infecting the whole dataset. What you might have already noticed is that all the ones listed are all realted to the blue side fighter. This makes sense according to the previously mentioned tradition of allowing the favored competitor to put on red gloves. When a fighter is not as strong they are less popular meaning they have less statistics avaliable to be gathered on them. We can also see a barplot that contains all columns that have any null values as well as what percent of that column is null. We see that R_odds has nearly 0 null values while B_ave_SIG_STR_landed is the column that has the most null values.  
+
+
+#### Fix Null Values for Continued Analysis
+
+```{r}
+nullValues <- apply(UFC_Main, 1, function(x) sum(is.na(x)))
+
+filteredUFC <- UFC_Main[nullValues < 10, ]
+sum(is.na(filteredUFC))
+```
+Before, we had 6718 total null values, now we have 4334 which means we dropped the number of null values by around 1/3 by getting rid of any fights that have 10 or more missing values. In a dataset with around 50 predictors 10 null values means that around 20% of the information from the fight was not recorded. Since we have around 5,000 observations we can afford to be a bit more picky.
+
+
+
+```{r}
+# Impute missing values
+UFC_NoNull <- filteredUFC %>%
+  mutate(across(where(is.numeric), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .)), 
+         across(where(is.factor), ~ ifelse(is.na(.), as.factor(get_mode(.)), .)))
+
+
+sum(is.na(UFC_NoNull))
+```
+To get rid of the remaining null values I simply filled them in with the mean of each column for numerical predictors and the mode is applied for categorical ones. Luckily there were no null values for categorical columns. Now we can continue to analyze the data like this.  
+
+
+
+### Variable Correlations  
+
+```{r, echo=FALSE}
+UFC_numeric <- select_if(UFC_NoNull, is.numeric)
+UFC_cor <- cor(UFC_numeric)
+
+
+
+
+corr_simple <- function(data=df,sig=0.5){
+  UFC_cor[lower.tri(UFC_cor,diag=TRUE)] <- NA 
+  UFC_cor[UFC_cor == 1] <- NA 
+  UFC_cor <- as.data.frame(as.table(UFC_cor))
+
+  UFC_cor <- na.omit(UFC_cor) 
+
+  UFC_cor <- subset(UFC_cor, abs(Freq) > sig) 
+
+  UFC_cor <- UFC_cor[order(-abs(UFC_cor$Freq)),] 
+
+  print(UFC_cor)
+
+  UFC_cormx <- reshape2::acast(UFC_cor, Var1~Var2, value.var="Freq")
+  
+  corrplot(UFC_cormx, is.corr=FALSE, tl.col="black", na.label=" ")
+}
+corr_simple()
+```
+
+This is a correlation plot (that filters out correlations between variables that are under 0.5) as well as a list (ordered by highest first) of the correlations between the matricies. We can see the strongest correlation is the one between B_odds and R_odds which makes sense since they should be inversely proportional. We also see a few other obvious ones such as the correlation between height and reach. However one that I found interesting was the correlation between B_total_rounds_fought and B_wins. This seems to imply that the longer a fight lasts the more likely blue (the underdog) is to win.  
+
+
+### Response Variable  
+
+Before we split the data let us take a look at the distribution of our response variable.
+```{r}
+ggplot(UFC_NoNull, aes(x = Winner)) +
+  geom_bar() +
+  geom_text(aes(label=..count..),stat='count',position=position_dodge(0.9),vjust=-0.2)
+```
+
+Remember when I said that the red corner was traditionally given to the favored fighter? Well that can be seen here. This means that "Winner" is not an even 50/50 split and very visibly leans towards the red corner.  
+
+### Categorical variables  
+
+The final part of our EDA is determining which variables are categorical. We see here that we have 6 total categorical variables, including the response variable.  
+
+```{r}
+character_Vars <- UFC_NoNull %>% select_if(where(function(col) is.factor(col) | is.character(col) )) %>% names()
+character_Vars
+```
+This now concludes our data analysis and we begin to work with the model
+
+
+# Training  
+
+## Data Split  
+
+The first thing that must be done is to split the dataset into two, the training set and the test set. We use stratified sampling to split the training and testing sets which will help ensure that the "Winner" variable is more evenly split between the two. I decided to do a 75/25 split which gives us a little more room for the training set.
+
+```{r}
+set.seed(1)
+UFC_Split <- initial_split(UFC_Main, strata = "Winner")
+
+UFC_Train <- training(UFC_Split)
+UFC_Test <- testing(UFC_Split)
+
+dim(UFC_Train)
+dim(UFC_Test)
+
+```  
+
+## Stratification  
+
+We see below that our stratified sampling did work and we have a roughly even distribution of red and blue winners between the Main dataset, test set, and the training set.
+```{r}
+ggplot(UFC_Train, aes(x = Winner)) +
+  geom_bar() +
+  geom_text(aes(label=..count..),stat='count',position=position_dodge(0.9),vjust=-0.2)
+ggplot(UFC_Test, aes(x = Winner)) +
+  geom_bar() +
+  geom_text(aes(label=..count..),stat='count',position=position_dodge(0.9),vjust=-0.2)
+```
+## K-fold Cross Validation  
+
+The reason I gave the training set 75 percent of the original data, as opposed to just 70, was so we could leave some extra room for validation. The type of validation we will use is k-fold cross validation which splits the training data into 5 folds. The model then trains on 4 of the folds and tests on the fifth until each of the five folds has been tested on. The average results of the all five tests are then dsiplayed. We use this method to ensure there is more consistency when we choose our model to finally test.  
+
+```{r}
+UFC_Folds <- vfold_cv(UFC_Train, v = 5, strata = "Winner")
+```
+
+
+
+## Recipe creation  
+Next we will create the recipe that we will use for our models
+```{r}
+
+numeric_predictors <- names(UFC_Train) %>% 
+  keep(~ is.numeric(UFC_Train[[.]]))
+
+categorical_predictors <- names(UFC_Train) %>% 
+  keep(~ is.factor(UFC_Train[[.]]) | is.character(UFC_Train[[.]]))
+
+UFC_Recipe <- recipe(Winner ~ ., data = UFC_Train) %>%
+
+
+  step_impute_linear(numeric_predictors) %>%
+#  step_impute_mode(categorical_predictors) %>%
+  
+  step_dummy(gender, B_Stance, R_Stance, better_rank, finish) %>%
+  step_interact(~ R_odds:B_odds) %>%
+  step_interact(~ B_total_rounds_fought:B_wins) %>%
+  step_center(all_predictors()) %>%
+  step_scale(all_predictors())
+  	
+```  
+
+In this recipe we used the UFC_Main dataset which still has the null values. We did not use the UFC_NoNull set because we had simply artificially filled in the null values by using just the means, we did that as just a quick measure to continue with our EDA. Instead of using just the mean to deal with null values we used a built in Tidyverse/Tidymodels function, step_impute_linear, which would give a more accurate predction of what the null values should be. We have the list of all columns that have null values from earlier in our EDA which proved helpful for us now. Then we created dummy variables for all the categorical variables in the dataset, which is something that we found out about in our EDA section. After that we created interaction terms for pairs of variables that were found to have a correlation of 0.8 and higher or -0.8 and lower. At the end we used step_center and step_scale to normalize our data.  
+
+
+# Modelling  
+
+Now we will be doing the most important part, creating the models. We will have 7 models, logistic, SVM, QDA, LDA, Random Forest, Boosted Tree, and Neural Network. For all the models we will be following the same steps for creation. The first step is setting up the specs and the specification, the second step would be creating the workflow using the specs. Then for the sake of accuracy we will create a tuning grid which allows us to test the same model type but with multiple different hyperparameters, allowing us to find the best hyperparameters we can (limited by my laptop's processing power). At the end we will fit the model using tune_grid which will allow us to use the workflow created for the model, the grid of hyperparameters, as well as the 5 folds we created earlier. All models will use the same recipe that we created earlier.   
+
+## Binary Logistic Classification  
+
+To start we will start with a more simple model for classification. The logistic model. This is the classification version of linear regression. The model can be uderstood by imagining an S-curve plot between 0 and 1. The point on the curve can be understood as the probability of the predicted outcome where 1 is interpreted as yes and 0 is no.  
+
+```{r}
+UFC_Logistic_Spec <- logistic_reg(penalty = tune(), mixture = tune()) %>%
+  set_engine("glmnet") %>%
+  set_mode("classification")
+
+UFC_Logistic_Workflow <- workflow() %>%
+  add_model(UFC_Logistic_Spec) %>%
+  add_recipe(UFC_Recipe)
+
+UFC_Logistic_Tune <- grid_regular(
+  penalty(range = c(0.001, 1)),
+  mixture(range = c(0.05, 1)),
+  levels = 5
+)
+```
+
+
+```{r, eval=FALSE}
+
+UFC_Logistic_Fit <- tune_grid(
+  UFC_Logistic_Workflow,
+  resamples = UFC_Folds,
+  grid = UFC_Logistic_Tune,
+)
+save(UFC_Logistic_Fit, file = "UFC_Logistic_Fit.rda")
+#Best parameters are Penalty = 1.781353 and Mixture = 0.05
+```  
+For the logistic model we tuned two parameters, penalty and mixture. We set the tuning grid to have 5 levels for each parameter in order for us to be able to find the better parameters for this model.  
+
+```{r}
+load("UFC_Logistic_Fit.rda")
+autoplot(UFC_Logistic_Fit)
+```
+
+## Support Vector Machine  
+
+The next model we will use is the support vector machine model which is supposed to be used on binary classification models. In our case our two choices are red and blue which qualifies us to use this model. A Support Vector Machine (SVM for short) works by creating a hyperplane that separates our binary choices and decides that one side will be red and hte other will be blue. It then bases its prediction of whether the outcome is red or blue based on what side of the hyperplane it lands on.  
+
+```{r}
+UFC_SVM_Spec <- svm_rbf(cost = tune(), rbf_sigma = tune()) %>% 
+  set_engine("kernlab") %>% 
+  set_mode("classification")
+
+UFC_SVM_Workflow <- workflow() %>% 
+  add_model(UFC_SVM_Spec) %>% 
+  add_recipe(UFC_Recipe)
+
+UFC_SVM_Tune <- grid_regular(
+  cost(range = c(0.1, 10)),
+  rbf_sigma(range = c(0.1, 1)),
+  levels = 5
+)
+```
+
+```{r, eval=FALSE}
+
+UFC_SVM_Fit <- tune_grid(
+  UFC_SVM_Workflow,
+  resamples = UFC_Folds,
+  grid = UFC_SVM_Tune,
+)
+save(UFC_SVM_Fit, file = "UFC_SVM_Fit.rda")
+#The best parameters are cost = 1.071773 and rbf_sigma = 1.258925 with mean AUC of 0.50848
+```  
+
+In this model the two parameters we tuned were cost and rbf_sigma. Once again the tuning grid is set to five levels.
+```{r}
+load("UFC_SVM_Fit.rda")
+autoplot(UFC_SVM_Fit)
+```  
+
+## Linear Discriminant Analysis  
+
+A Linear Discriminant Analysis model (LDA) is similar to a Quadratic Discriminant Analaysis (QDA) except fo rthe fact that it assumes that the covariance matrix is the same for all classes. The model also assumes that the predictors are normally distributed, which is might be true due to the size of the training set.  
+
+```{r}
+
+UFC_LDA_Spec <- discrim_linear() %>% 
+  set_engine("MASS")
+
+UFC_LDA_Workflow <- workflow() %>%
+  add_model(UFC_LDA_Spec) %>%
+  add_recipe(UFC_Recipe)
+```
+
+```{r, eval=FALSE}
+
+UFC_LDA_Fit <- tune_grid(
+  UFC_LDA_Workflow,
+  resamples = UFC_Folds,
+)  
+
+save(UFC_LDA_Fit, file = "UFC_LDA_Fit.rda")
+
+```  
+We have no hyperparameters to tune for this model since it is fairly simple so we did not create a tuning grid.  
+
+```{r}
+load("UFC_LDA_Fit.rda")
+#autoplot(UFC_LDA_Fit)
+```  
+
+## Random Forest  
+
+This is where we begin to get into more complicated models. Logistic, SVM, and LDA were all rather simple to understand and interpret however Random Forest models are used for hteir predictive power and not their interpretability. A Random Forest model is based off of multiple decision trees. Decision trees find the best split and continue on from there and random forests take multiple trees (which is a parameter) and uses a method to group them together.
+
+```{r}
+#RANDOM FOREST MODEL
+UFC_RF_Spec <- rand_forest(mtry = tune(), trees = tune(), min_n = tune()) %>% 
+  set_engine("ranger", importance = 'impurity') %>%
+  set_mode("classification")
+
+UFC_RF_Workflow <- workflow() %>%
+  add_recipe(UFC_Recipe) %>%
+  add_model(UFC_RF_Spec)
+
+UFC_RF_Tune <- grid_regular(
+  mtry(range = c(2, 8)),
+  min_n(range = c(2, 10)),
+  trees(range = c(100, 2000)),
+  levels = 5
+)
+```
+
+```{r, eval=FALSE}
+
+UFC_RF_Fit <- tune_grid(
+  UFC_RF_Workflow,
+  resamples = UFC_Folds,
+  grid = UFC_RF_Tune,
+)
+save(UFC_RF_Fit, file = "UFC_RF_Fit.rda")
+
+#Best parameters are mtry = 2, trees = 575, and min_n = 4. ROC_AUC of 0.7049678
+```  
+
+There are multiple parameters to be tuned in Random Forests which is another feature that helps its predictive accuracy. However, the multitude of parameters leads to a very high processing time for this model which is arguably its biggest drawback. "trees" is the parameter that decides how many decision trees will be used to create the "Forest". "mtry" is the parameter that determines how many variables to consider at each split of the decision tree. And min_n is the minimum number of samples to create a split for the decision tree.  
+
+```{r}
+load("UFC_RF_Fit.rda")
+autoplot(UFC_RF_Fit)
+```  
+
+## Boosted Tree  
+
+Boosted Tree models, similar to Random Forests, are known for their predictive prowess and not their interpretability. Again, similar to Random Forests, they are based off of decision trees. However, the difference between the two is that the random forest lets each decision do what it wants and then combines them at the end using the specified method while boosted trees work sequentially. Each decision tree works to correct the minor errors of the tree before it.  
+
+```{r}
+UFC_BT_Spec <- boost_tree(learn_rate = tune(), tree_depth = tune(), trees = tune()) %>% 
+  set_engine("xgboost") %>%
+  set_mode("classification")
+UFC_BT_Workflow <- workflow() %>%
+  add_recipe(UFC_Recipe) %>%
+  add_model(UFC_BT_Spec)
+
+UFC_BT_Tune <- grid_regular(
+  learn_rate(range = c(0.01, 0.3)),
+  tree_depth(range = c(1, 10)),
+  trees(range = c(50, 200)),
+  levels = 5
+)
+```
+
+```{r, eval=FALSE}
+
+UFC_BT_Fit <- tune_grid(
+  UFC_BT_Workflow,
+  resamples = UFC_Folds,
+  grid = UFC_BT_Tune,
+)
+save(UFC_BT_Fit, file = "UFC_BT_Fit.rda")
+```  
+
+The Boosted tree model also has many hyperparameters that are ready to be tuned. It shares parameters like tree_depth and tree with Random Forest models. Learn_rate is a parameter that determines how quickly the machines learns new information. If this number is set high it could be subject to overfitting since each individiual piece of data is highly regarded rather than the overall grand scheme of things.  
+
+```{r}
+load("UFC_BT_Fit.rda")
+autoplot(UFC_BT_Fit)
+```  
+
+## Neural Network  
+
+A Neural Netowkr Model is largely based off of how the human brain works. There are nodes that are organized in layers which the data goes through. There is the input layer, hidden layers, and the output layer. all the nodes have weights and biases and an activation function. These models are the ones that are used in processes like facial and image recognition since they do well with non data inputs like images and video.  
+
+```{r, eval=FALSE}
+
+#Note to grader. I was not able to get tensorflow to download on my laptop however I am certain this is the correct code for a neural network model. Run it on your laptop which hopefully has the correct programs downloaded. However, for the rest of this project I will no longer be considering this model since I am not able to collect metrics on it. I left it here because I worked too hard on it just to delete it. I would greatly appreciate it if I can get an email back telling me how accurate this model is, thank you.
+UFC_NN_Spec <- mlp(mode = "classification", hidden_units = tune(), penalty = tune(), epochs = tune()) %>%
+  set_engine("keras")
+UFC_NN_Workflow <- workflow() %>%
+  add_model(UFC_NN_Spec) %>%
+  add_recipe(UFC_Recipe)
+UFC_NN_Tune <- grid_regular(
+  hidden_units(range = c(10, 100)),
+  penalty(range = c(0, 1)),
+  epochs(range = c(50, 500)),
+  levels = 5
+)
+
+
+UFC_NN_Fit <- tune_grid(
+  UFC_NN_Workflow,
+  resamples = UFC_Folds,
+  grid = UFC_NN_Tune,
+  )
+save(UFC_NN_Fit, file = "UFC_NN_Fit.rda")
+```  
+
+The Neural Network model has three parameters, hidden_units which determines number of hidden layers, penalty which has to do with the regularization technique applied to the model, and epochs which is the number of complete forward and backward passes that the learning algorithm goes through the dataset.
+
+```{r}
+#load("UFC_NN_Fit.rda")
+#autoplot(UFC_NN_Fit)
+```  
+
+With these six models designed, tuned, and fit we can now conclude this segment of the roadmap and move onto the next. It is time to figure out which is the best.
+# Collecting Metrics and fitting  
+
+In order to find the best model we use collect_metrics to find the ROC_AUC value that is the highest among all the iterations of all the models.  
+
+```{r}
+arrange(filter(collect_metrics(UFC_Logistic_Fit), .metric == "roc_auc"), desc(mean))
+arrange(filter(collect_metrics(UFC_SVM_Fit), .metric == "roc_auc"), desc(mean))
+arrange(filter(collect_metrics(UFC_LDA_Fit), .metric == "roc_auc"), desc(mean))
+arrange(filter(collect_metrics(UFC_RF_Fit), .metric == "roc_auc"), desc(mean))
+arrange(filter(collect_metrics(UFC_BT_Fit), .metric == "roc_auc"), desc(mean))
+#arrange(filter(collect_metrics(UFC_NN_Fit), .metric == "roc_auc"), mean)
+```  
+
+The best model, with a mean ROC_AUC is the Random Forest model with parameters of mtry=2, trees=575, and min_n=4. This is a result that is to be expected since both random forests and boosted trees are much more complex than the others and are known for having a much higher predictive ability. The next step would be to fit the model to the training set. 
+
+```{r}
+Best_Model <- select_best(UFC_BT_Fit)
+Best_Workflow <- finalize_workflow(UFC_BT_Workflow, Best_Model)
+Best_Fit <- fit(Best_Workflow, UFC_Train)
+```
+
+
+Now that our winner is chosen let's see how it does against the testing set.
+
+# Testing
+We fit the Random FOrest with the best parameters first and then test it against our testing set.  
+
+```{r}
+The_Test <- augment(Best_Fit, UFC_Test)
+The_Test$Winner <- as.factor(The_Test$Winner)
+The_Results <- roc_auc(The_Test, truth = Winner, .pred_Blue)
+The_Results
+```
+When we see the results we can see that our model has an ROC_AUC score of 0.6843 which is slightly under than the 0.704 that we estimated from the k-fold cross validation.  
+
+# Conclusion  
+
+In order to create this model we used our knowledge of UFC and MMA to filter out variables that are unnecessary such as a fighter's name. After that we conducted some exploratory data analysis to help get a better idea of the dataset that we are working with. We found out how many null values there are, we found out which variables are categorical, and we found out about the correlation between some of the variables. We then created a recipe that imputed any null variables, created interaction variables, and normalized the data. Using that recipe we created 6 different models that had multiple parameters which we tuned till we could find the best combination. At the end the Random Forest model was the best one and upon fitting and testing it we found out the model had an accuracy of about 68%. Considering that MMA is a 1v1 sport and has a lot of variance since any fighter can wake up feeling sore or just feeling off that is a pretty good model. In general, even UFC and other official betting sources only get up to 70%. In conclusion, I would say this project is a success. Both in the fact that the model turned out good as well as the fact that we learned a lot of knowledge about statistics, coding in R, and machine learning.
